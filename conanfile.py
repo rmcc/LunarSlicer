@@ -12,6 +12,7 @@ class CompressorRecipe(ConanFile):
         self.requires("spdlog/1.10.0")
         self.requires("fmt/8.1.1")
         self.requires("range-v3/0.12.0")
+        self.requires("scripta/[>=0.1.0]@ultimaker/testing")
         # self.requires("llvm-openmp/12.0.1")
 
     def configure(self):

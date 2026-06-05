@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Ultimaker B.V.
+// Copyright (c) 2023 UltiMaker
 // CuraEngine is released under the terms of the AGPLv3 or higher
 
 #include <algorithm>
@@ -412,7 +412,9 @@ void FffPolygonGenerator::slices2polygons(SliceDataStorage& storage, TimeKeeper&
     // brim depends on the first layer not being empty
     // only remove empty layers if we haven't generate support, because then support was added underneath the model.
     //   for some materials it's better to print on support than on the build plate.
-    if (mesh_group_settings.get<bool>("remove_empty_first_layers"))
+    const auto has_support = mesh_group_settings.get<bool>("support_enable") || mesh_group_settings.get<bool>("support_mesh");
+    const auto remove_empty_first_layers = mesh_group_settings.get<bool>("remove_empty_first_layers") && !has_support;
+    if (remove_empty_first_layers)
     {
         removeEmptyFirstLayers(storage, storage.print_layer_count); // changes storage.print_layer_count!
     }
@@ -737,7 +739,7 @@ void FffPolygonGenerator::processWalls(SliceMeshStorage& mesh, size_t layer_nr)
 {
     SliceLayer* layer = &mesh.layers[layer_nr];
     WallsComputation walls_computation(mesh.settings, layer_nr);
-    walls_computation.generateWalls(layer);
+    walls_computation.generateWalls(layer, SectionType::WALL);
 }
 
 bool FffPolygonGenerator::isEmptyLayer(SliceDataStorage& storage, const unsigned int layer_idx)
