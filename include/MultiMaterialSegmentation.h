@@ -1,7 +1,6 @@
 #ifndef MULTI_MATERIAL_SEGMENTATION_H
 #define MULTI_MATERIAL_SEGMENTATION_H
 
-#include <boost/geometry.hpp>
 #include <boost/polygon/voronoi.hpp>
 #include <boost/polygon/voronoi_diagram.hpp>
 #include <vector>
