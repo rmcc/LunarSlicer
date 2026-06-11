@@ -1,6 +1,8 @@
 // Copyright (c) 2023 UltiMaker
 // CuraEngine is released under the terms of the AGPLv3 or higher
 
+#include "MeshGroup.h"
+
 #include <limits>
 #include <stdio.h>
 #include <string.h>
@@ -10,7 +12,6 @@
 #include <scripta/logger.h>
 #include <spdlog/spdlog.h>
 
-#include "MeshGroup.h"
 #include "settings/types/Ratio.h" //For the shrinkage percentage and scale factor.
 #include "utils/Constant.h"
 #include "utils/FMatrix4x3.h" //To transform the input meshes for shrinkage compensation and to align in command line mode.
@@ -49,7 +50,8 @@ Point3 MeshGroup::min() const
     Point3 ret(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max());
     for (const Mesh& mesh : meshes)
     {
-        if (mesh.settings.get<bool>("infill_mesh") || mesh.settings.get<bool>("cutting_mesh") || mesh.settings.get<bool>("anti_overhang_mesh")) // Don't count pieces that are not printed.
+        if (mesh.settings.get<bool>("infill_mesh") || mesh.settings.get<bool>("cutting_mesh")
+            || mesh.settings.get<bool>("anti_overhang_mesh")) // Don't count pieces that are not printed.
         {
             continue;
         }
@@ -70,7 +72,8 @@ Point3 MeshGroup::max() const
     Point3 ret(std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::min());
     for (const Mesh& mesh : meshes)
     {
-        if (mesh.settings.get<bool>("infill_mesh") || mesh.settings.get<bool>("cutting_mesh") || mesh.settings.get<bool>("anti_overhang_mesh")) // Don't count pieces that are not printed.
+        if (mesh.settings.get<bool>("infill_mesh") || mesh.settings.get<bool>("cutting_mesh")
+            || mesh.settings.get<bool>("anti_overhang_mesh")) // Don't count pieces that are not printed.
         {
             continue;
         }
@@ -113,7 +116,9 @@ void MeshGroup::finalize()
         }
         mesh.translate(mesh_offset + meshgroup_offset);
     }
-    scaleFromBottom(settings.get<Ratio>("material_shrinkage_percentage_xy"), settings.get<Ratio>("material_shrinkage_percentage_z")); // Compensate for the shrinkage of the material.
+    scaleFromBottom(
+        settings.get<Ratio>("material_shrinkage_percentage_xy"),
+        settings.get<Ratio>("material_shrinkage_percentage_z")); // Compensate for the shrinkage of the material.
     for (const auto& [idx, mesh] : meshes | ranges::views::enumerate)
     {
         scripta::log(fmt::format("mesh_{}", idx), mesh, SectionType::NA);
@@ -293,7 +298,7 @@ bool loadMeshIntoMeshGroup(MeshGroup* meshgroup, const char* filename, const FMa
         if (loadMeshSTL(&mesh, filename, transformation)) // Load it! If successful...
         {
             meshgroup->meshes.push_back(mesh);
-            spdlog::info("loading '{}' took {:3} seconds", filename, load_timer.restart());
+            spdlog::info("loading '{}' took {:03.3f} seconds", filename, load_timer.restart());
             return true;
         }
     }

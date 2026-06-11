@@ -3,6 +3,8 @@
 
 #include "sliceDataStorage.h"
 
+#include <spdlog/spdlog.h>
+
 #include "Application.h" //To get settings.
 #include "ExtruderTrain.h"
 #include "FffProcessor.h" //To create a mesh group with if none is provided.
@@ -13,8 +15,6 @@
 #include "infill/SubDivCube.h" // For the destructor
 #include "raft.h"
 #include "utils/math.h" //For PI.
-
-#include <spdlog/spdlog.h>
 
 
 namespace cura
@@ -333,7 +333,7 @@ Polygons
         {
             if (primeTower.enabled)
             {
-                total.add(primeTower.outer_poly);
+                total.add(primeTower.getOuterPoly(layer_nr));
             }
         }
         return total;
@@ -560,9 +560,19 @@ Polygons SliceDataStorage::getMachineBorder(int checking_extruder_nr) const
 
     Polygons disallowed_areas = mesh_group_settings.get<Polygons>("machine_disallowed_areas");
     disallowed_areas = disallowed_areas.unionPolygons(); // union overlapping disallowed areas
-    for (PolygonRef poly : disallowed_areas)
-        for (Point& p : poly)
-            p = Point(machine_size.max.x / 2 + p.X, machine_size.max.y / 2 - p.Y); // apparently the frontend stores the disallowed areas in a different coordinate system
+
+    // The disallowed areas are expressed in buildplate-centered coordinates, but the models
+    // may be expressed in front-left-centered coordinantes, so in this case we need to translate them
+    if (! mesh_group_settings.get<bool>("machine_center_is_zero"))
+    {
+        for (PolygonRef poly : disallowed_areas)
+        {
+            for (Point& p : poly)
+            {
+                p = Point(machine_size.max.x / 2 + p.X, machine_size.max.y / 2 - p.Y);
+            }
+        }
+    }
 
     std::vector<bool> extruder_is_used = getExtrudersUsed();
 
@@ -702,6 +712,30 @@ void SupportLayer::excludeAreasFromSupportInfillAreas(const Polygons& exclude_po
             support_infill_parts[remove_idx] = std::move(support_infill_parts.back());
         }
         support_infill_parts.pop_back(); // always erase last place in the vector
+    }
+}
+
+void SupportLayer::fillInfillParts(
+    const LayerIndex layer_nr,
+    const std::vector<Polygons>& support_fill_per_layer,
+    const coord_t support_line_width,
+    const coord_t wall_line_count,
+    const coord_t grow_layer_above /*has default 0*/,
+    const bool unionAll /*has default false*/,
+    const coord_t custom_line_distance /*has default 0*/)
+{
+    const Polygons& support_this_layer = support_fill_per_layer[layer_nr];
+    const Polygons& support_layer_above
+        = (layer_nr + 1) >= support_fill_per_layer.size() || layer_nr <= 0 ? Polygons() : support_fill_per_layer[layer_nr + 1].offset(grow_layer_above);
+    const auto all_support_areas_in_layer = { support_this_layer.difference(support_layer_above), support_this_layer.intersection(support_layer_above) };
+    bool use_fractional_config = true;
+    for (auto& support_areas : all_support_areas_in_layer)
+    {
+        for (const PolygonsPart& island_outline : support_areas.splitIntoParts(unionAll))
+        {
+            support_infill_parts.emplace_back(island_outline, support_line_width, use_fractional_config, wall_line_count, custom_line_distance);
+        }
+        use_fractional_config = false;
     }
 }
 
