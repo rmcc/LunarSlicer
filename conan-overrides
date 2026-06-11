@@ -14,4 +14,5 @@ protobuf/*: protobuf/3.21.12
 boost/*: boost/1.82.0
 asio-grpc/*: asio-grpc/2.6.0
 openssl/1.1.1l: openssl/1.1.1w
+openssl/3.2.0: openssl/1.1.1w
 abseil/*: abseil/20230802.1

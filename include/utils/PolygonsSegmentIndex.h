@@ -28,9 +28,9 @@ public:
 
     PolygonsSegmentIndex(const Polygons* polygons, unsigned int poly_idx, unsigned int point_idx, int color);
 
-    Point from() const;
+    Point2LL from() const;
 
-    Point to() const;
+    Point2LL to() const;
 };
 
 using Segment = PolygonsSegmentIndex;
@@ -55,17 +55,17 @@ namespace polygon
 
 
 template<>
-struct geometry_concept<cura::Point>
+struct geometry_concept<cura::Point2LL>
 {
     typedef point_concept type;
 };
 
 template<>
-struct point_traits<cura::Point>
+struct point_traits<cura::Point2LL>
 {
     typedef cura::coord_t coordinate_type;
 
-    static inline coordinate_type get(const cura::Point& point, orientation_2d orient)
+    static inline coordinate_type get(const cura::Point2LL& point, orientation_2d orient)
     {
         return (orient == HORIZONTAL) ? point.X : point.Y;
     }
@@ -81,7 +81,7 @@ template<>
 struct segment_traits<cura::Segment>
 {
     typedef cura::coord_t coordinate_type;
-    typedef cura::Point point_type;
+    typedef cura::Point2LL point_type;
     static inline point_type get(const cura::Segment& CSegment, direction_1d dir)
     {
         return dir.to_int() ? CSegment.p() : CSegment.next().p();
@@ -93,4 +93,4 @@ struct segment_traits<cura::Segment>
 } // namespace boost
 
 
-#endif//UTILS_POLYGONS_SEGMENT_INDEX_H
+#endif // UTILS_POLYGONS_SEGMENT_INDEX_H

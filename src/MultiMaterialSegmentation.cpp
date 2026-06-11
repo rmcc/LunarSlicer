@@ -34,10 +34,10 @@ void MultiMaterialSegmentation::paintingSlicerLayers(Slicer* slicer, Slicer* col
         color_slicer->layers[i].z = layers[i].z;
     }
 
-    int top_layers = std::max(slicer->mesh->settings.get<int>("top_layers"), 1);
-    int bottom_layers = std::max(slicer->mesh->settings.get<int>("bottom_layers"), 1);
-    coord_t wall_outer_line_width = slicer->mesh->settings.get<coord_t>("wall_line_width_0");
-    coord_t wall_inner_line_width = slicer->mesh->settings.get<coord_t>("wall_line_width_x");
+    int top_layers = std::max(slicer->mesh->settings_.get<int>("top_layers"), 1);
+    int bottom_layers = std::max(slicer->mesh->settings_.get<int>("bottom_layers"), 1);
+    coord_t wall_outer_line_width = slicer->mesh->settings_.get<coord_t>("wall_line_width_0");
+    coord_t wall_inner_line_width = slicer->mesh->settings_.get<coord_t>("wall_line_width_x");
 
     coord_t z_h = MM2INT(1);
     coord_t min_offset_len = MM2INT(0.04);
@@ -333,7 +333,7 @@ Polygons MultiMaterialSegmentation::toVoronoiColorPolygons(std::vector<Segment>&
             {
                 break;
             }
-            poly.add(Point(next->vertex1()->x(), next->vertex1()->y()));
+            poly.add(Point2LL(next->vertex1()->x(), next->vertex1()->y()));
             next = next->next();
         } while (next != start);
         if (! is_circle)
@@ -366,8 +366,8 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching(Polygons& polys, Poly
         Polygon color_poly;
         for (int j = 0; j < polys[i].size(); ++j)
         {
-            Point& p1 = polys[i][j];
-            Point& p2 = polys[i][(j + 1) % polys[i].size()];
+            Point2LL& p1 = polys[i][j];
+            Point2LL& p2 = polys[i][(j + 1) % polys[i].size()];
 
             AABB aabb;
             aabb.include(p1);
@@ -445,13 +445,13 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching2(Polygons& polys, Pol
     std::vector<bool> used(diffLines.size(), false);
 
     // The lines front in the first and back in the second;
-    std::unordered_map<Point, std::vector<int>> point_lines_map;
+    std::unordered_map<Point2LL, std::vector<int>> point_lines_map;
     std::vector<std::vector<int>> color_segments_tmp;
 
     for (int i = 0; i < diffLines.size(); ++i)
     {
-        Point& front = diffLines[i].front();
-        Point& back = diffLines[i].back();
+        Point2LL& front = diffLines[i].front();
+        Point2LL& back = diffLines[i].back();
         if (front == back) {
             use_count++;
             used[i] = true;
@@ -585,7 +585,7 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching2(Polygons& polys, Pol
 
 }
 
-MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersection(Point& p1, Point& p2, Polygons& line_polys)
+MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersection(Point2LL& p1, Point2LL& p2, Polygons& line_polys)
 {
     Polygons polys;
     Polygon poly;
@@ -605,8 +605,8 @@ MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersect
     coord_t len2 = MM2INT(0.05) * MM2INT(0.05);
     if (res.size() == 1)
     {
-        Point& res_p1 = res[0][0];
-        Point& res_p2 = res[0][1];
+        Point2LL& res_p1 = res[0][0];
+        Point2LL& res_p2 = res[0][1];
         if ((p1 == res_p1 && p2 == res_p2) || (p1 == res_p2 && p2 == res_p1))
         {
             line.points.emplace_back(p1);
@@ -616,7 +616,7 @@ MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersect
         }
         if (p1 == res_p1 || p1 == res_p2)
         {
-            Point middle = p1 == res_p1 ? res_p2 : res_p1;
+            Point2LL middle = p1 == res_p1 ? res_p2 : res_p1;
             if (vSize2(middle - p1) < len2)
             {
                 line.points.emplace_back(p1);
@@ -635,7 +635,7 @@ MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersect
         }
         if (p2 == res_p1 || p2 == res_p2)
         {
-            Point middle = p2 == res_p1 ? res_p2 : res_p1;
+            Point2LL middle = p2 == res_p1 ? res_p2 : res_p1;
             if (vSize2(p2 - middle) < len2)
             {
                 line.points.emplace_back(p1);
@@ -670,7 +670,7 @@ MultiMaterialSegmentation::Line MultiMaterialSegmentation::linePolygonsIntersect
 
     std::sort(line.points.begin(),
               line.points.end(),
-              [&sort_key](Point& a, Point& b)
+              [&sort_key](Point2LL& a, Point2LL& b)
               {
                   if (sort_key)
                   {
@@ -714,16 +714,16 @@ Polygons MultiMaterialSegmentation::paintingSlicerLayerColoredFaces(SlicerLayer&
         return Polygons();
     }
     Polygons polygons;
-    Point3 z_p(0, 0, 1);
+    Point3LL z_p(0, 0, 1);
 
     for (int i = 0; i < layer.color_faces_idx.size(); ++i)
     {
         int face_idx = layer.color_faces_idx[i];
-        auto& face = p_mesh->faces[face_idx];
-        Point3 vs[3];
-        vs[0] = p_mesh->vertices[face.vertex_index[0]].p;
-        vs[1] = p_mesh->vertices[face.vertex_index[1]].p;
-        vs[2] = p_mesh->vertices[face.vertex_index[2]].p;
+        auto& face = p_mesh->faces_[face_idx];
+        Point3LL vs[3];
+        vs[0] = p_mesh->vertices_[face.vertex_index_[0]].p_;
+        vs[1] = p_mesh->vertices_[face.vertex_index_[1]].p_;
+        vs[2] = p_mesh->vertices_[face.vertex_index_[2]].p_;
 
         auto cb = vs[2] - vs[1];
         auto ab = vs[0] - vs[1];
@@ -736,93 +736,93 @@ Polygons MultiMaterialSegmentation::paintingSlicerLayerColoredFaces(SlicerLayer&
             continue;
         }
 
-        std::sort(vs, vs + 3, [](Point3& p1, Point3& p2) { return p1.z < p2.z; });
-        if (vs[0].z > max_z || vs[2].z < min_z)
+        std::sort(vs, vs + 3, [](Point3LL& p1, Point3LL& p2) { return p1.z_ < p2.z_; });
+        if (vs[0].z_ > max_z || vs[2].z_ < min_z)
         {
             continue;
         }
 
         Polygon poly;
-        if (vs[0].z >= min_z && vs[2].z <= max_z)
+        if (vs[0].z_ >= min_z && vs[2].z_ <= max_z)
         {
-            poly.add(Point(vs[0].x, vs[0].y));
-            poly.add(Point(vs[1].x, vs[1].y));
-            poly.add(Point(vs[2].x, vs[2].y));
+            poly.add(Point2LL(vs[0].x_, vs[0].y_));
+            poly.add(Point2LL(vs[1].x_, vs[1].y_));
+            poly.add(Point2LL(vs[2].x_, vs[2].y_));
         }
-        else if (vs[0].z < min_z && vs[2].z <= max_z)
+        else if (vs[0].z_ < min_z && vs[2].z_ <= max_z)
         {
-            poly.add(Point(vs[2].x, vs[2].y));
-            if (vs[1].z >= min_z)
+            poly.add(Point2LL(vs[2].x_, vs[2].y_));
+            if (vs[1].z_ >= min_z)
             {
-                poly.add(Point(vs[1].x, vs[1].y));
-                Point3 p1 = getPoint3ByZ(vs[1], vs[0], min_z);
-                Point3 p2 = getPoint3ByZ(vs[0], vs[2], min_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
+                poly.add(Point2LL(vs[1].x_, vs[1].y_));
+                Point3LL p1 = getPoint3ByZ(vs[1], vs[0], min_z);
+                Point3LL p2 = getPoint3ByZ(vs[0], vs[2], min_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
             }
             else
             {
-                Point3 p1 = getPoint3ByZ(vs[2], vs[1], min_z);
-                Point3 p2 = getPoint3ByZ(vs[0], vs[2], min_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
+                Point3LL p1 = getPoint3ByZ(vs[2], vs[1], min_z);
+                Point3LL p2 = getPoint3ByZ(vs[0], vs[2], min_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
             }
         }
-        else if (vs[0].z >= min_z && vs[2].z > max_z)
+        else if (vs[0].z_ >= min_z && vs[2].z_ > max_z)
         {
-            poly.add(Point(vs[0].x, vs[0].y));
-            if (vs[1].z <= max_z)
+            poly.add(Point2LL(vs[0].x_, vs[0].y_));
+            if (vs[1].z_ <= max_z)
             {
-                poly.add(Point(vs[1].x, vs[1].y));
-                Point3 p1 = getPoint3ByZ(vs[1], vs[2], max_z);
-                Point3 p2 = getPoint3ByZ(vs[2], vs[0], max_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
+                poly.add(Point2LL(vs[1].x_, vs[1].y_));
+                Point3LL p1 = getPoint3ByZ(vs[1], vs[2], max_z);
+                Point3LL p2 = getPoint3ByZ(vs[2], vs[0], max_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
             }
             else
             {
-                Point3 p1 = getPoint3ByZ(vs[0], vs[1], max_z);
-                Point3 p2 = getPoint3ByZ(vs[2], vs[0], max_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
+                Point3LL p1 = getPoint3ByZ(vs[0], vs[1], max_z);
+                Point3LL p2 = getPoint3ByZ(vs[2], vs[0], max_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
             }
         }
         else
         {
-            if (vs[1].z > max_z)
+            if (vs[1].z_ > max_z)
             {
-                Point3 p1 = getPoint3ByZ(vs[0], vs[2], max_z);
-                Point3 p2 = getPoint3ByZ(vs[1], vs[0], max_z);
-                Point3 p3 = getPoint3ByZ(vs[1], vs[0], min_z);
-                Point3 p4 = getPoint3ByZ(vs[0], vs[2], min_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
-                poly.add(Point(p3.x, p3.y));
-                poly.add(Point(p4.x, p4.y));
+                Point3LL p1 = getPoint3ByZ(vs[0], vs[2], max_z);
+                Point3LL p2 = getPoint3ByZ(vs[1], vs[0], max_z);
+                Point3LL p3 = getPoint3ByZ(vs[1], vs[0], min_z);
+                Point3LL p4 = getPoint3ByZ(vs[0], vs[2], min_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
+                poly.add(Point2LL(p3.x_, p3.y_));
+                poly.add(Point2LL(p4.x_, p4.y_));
             }
-            else if (vs[1].z < min_z)
+            else if (vs[1].z_ < min_z)
             {
-                Point3 p1 = getPoint3ByZ(vs[0], vs[2], max_z);
-                Point3 p2 = getPoint3ByZ(vs[2], vs[1], max_z);
-                Point3 p3 = getPoint3ByZ(vs[2], vs[1], min_z);
-                Point3 p4 = getPoint3ByZ(vs[0], vs[2], min_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
-                poly.add(Point(p3.x, p3.y));
-                poly.add(Point(p4.x, p4.y));
+                Point3LL p1 = getPoint3ByZ(vs[0], vs[2], max_z);
+                Point3LL p2 = getPoint3ByZ(vs[2], vs[1], max_z);
+                Point3LL p3 = getPoint3ByZ(vs[2], vs[1], min_z);
+                Point3LL p4 = getPoint3ByZ(vs[0], vs[2], min_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
+                poly.add(Point2LL(p3.x_, p3.y_));
+                poly.add(Point2LL(p4.x_, p4.y_));
             }
             else
             {
-                Point3 p1 = getPoint3ByZ(vs[0], vs[2], max_z);
-                Point3 p2 = getPoint3ByZ(vs[2], vs[1], max_z);
-                Point3 p3 = vs[1];
-                Point3 p4 = getPoint3ByZ(vs[1], vs[0], min_z);
-                Point3 p5 = getPoint3ByZ(vs[0], vs[2], min_z);
-                poly.add(Point(p1.x, p1.y));
-                poly.add(Point(p2.x, p2.y));
-                poly.add(Point(p3.x, p3.y));
-                poly.add(Point(p4.x, p4.y));
-                poly.add(Point(p5.x, p5.y));
+                Point3LL p1 = getPoint3ByZ(vs[0], vs[2], max_z);
+                Point3LL p2 = getPoint3ByZ(vs[2], vs[1], max_z);
+                Point3LL p3 = vs[1];
+                Point3LL p4 = getPoint3ByZ(vs[1], vs[0], min_z);
+                Point3LL p5 = getPoint3ByZ(vs[0], vs[2], min_z);
+                poly.add(Point2LL(p1.x_, p1.y_));
+                poly.add(Point2LL(p2.x_, p2.y_));
+                poly.add(Point2LL(p3.x_, p3.y_));
+                poly.add(Point2LL(p4.x_, p4.y_));
+                poly.add(Point2LL(p5.x_, p5.y_));
             }
         }
 
@@ -840,17 +840,17 @@ Polygons MultiMaterialSegmentation::paintingSlicerLayerColoredFaces(SlicerLayer&
     return polygons;
 }
 
-Point3 MultiMaterialSegmentation::getPoint3ByZ(Point3& p1, Point3& p2, int z)
+Point3LL MultiMaterialSegmentation::getPoint3ByZ(Point3LL& p1, Point3LL& p2, int z)
 {
-    if (p1.z == z)
+    if (p1.z_ == z)
     {
         return p1;
     }
-    if (p2.z == z)
+    if (p2.z_ == z)
     {
         return p2;
     }
-    double k = (double)(z - p1.z) / (p2.z - p1.z);
+    double k = (double)(z - p1.z_) / (p2.z_ - p1.z_);
     return p1 + (p2 - p1) * k;
 }
 

@@ -30,7 +30,7 @@ class MultiMaterialSegmentation
     class Line //<! Multi color line segments
     {
     public:
-        std::vector<Point> points;
+        std::vector<Point2LL> points;
         std::vector<int> colors;
     };
 
@@ -64,11 +64,11 @@ private:
 
     Polygons toVoronoiColorPolygons(std::vector<Segment>& colored_segments);
 
-    Line linePolygonsIntersection(Point& p1, Point& p2, Polygons& line_polys);
+    Line linePolygonsIntersection(Point2LL& p1, Point2LL& p2, Polygons& line_polys);
 
     Polygons paintingSlicerLayerColoredFaces(SlicerLayer& layer, const Mesh* p_mesh, coord_t min_z, coord_t max_z);
 
-    Point3 getPoint3ByZ(Point3& p1, Point3& p2, int z);
+    Point3LL getPoint3ByZ(Point3LL& p1, Point3LL& p2, int z);
 };
 
 } // namespace cura

@@ -40,11 +40,11 @@ void PolygonsVoronoi::convertToPolygonsCell(vd_t::cell_type& vd_cell, Segments& 
     vd_t::vertex_type source_end_p(0, 0);
 
     if (vd_cell.contains_point()) {
-        Point point = VoronoiUtils::getSourcePoint(vd_cell, std::vector<Point>(), segments);
+        Point2LL point = VoronoiUtils::getSourcePoint(vd_cell, std::vector<Point2LL>(), segments);
         source_start_p = vd_t::vertex_type(point.X, point.Y);
         source_end_p = vd_t::vertex_type(point.X, point.Y);
     } else {
-        Segment segment = VoronoiUtils::getSourceSegment(vd_cell, std::vector<Point>(), segments);
+        Segment segment = VoronoiUtils::getSourceSegment(vd_cell, std::vector<Point2LL>(), segments);
         source_start_p = vd_t::vertex_type(segment.to().X, segment.to().Y);
         source_end_p =  vd_t::vertex_type(segment.from().X, segment.from().Y);
     }
