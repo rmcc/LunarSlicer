@@ -695,11 +695,7 @@ public:
 
     static void fixSelfIntersections(const coord_t epsilon, Polygons& thiss);
 
-    static Polygons offsetInlinePolygons(const coord_t epsilon, Polygons& thiss);
-
     static void splitToSimplePolygons(Polygons& polygons, std::vector<Polygons>& out);
-
-    static void simplePolygons(Polygons& polygons);
 
     static Polygons simplifyByScale(Polygons& polygons, coord_t offset);
 

@@ -9,8 +9,8 @@
 #include "utils/math.h"
 #include "utils/polygon.h"
 #include <gtest/gtest.h>
-#include <polyclipping/clipper.hpp>
 #include <filesystem>
+#include <polyclipping/clipper.hpp>
 #include <string>
 
 #include <scripta/logger.h>

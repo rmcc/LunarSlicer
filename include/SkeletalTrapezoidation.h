@@ -17,7 +17,6 @@
 #include "settings/types/Ratio.h"
 #include "utils/ExtrusionJunction.h"
 #include "utils/ExtrusionLine.h"
-#include "utils/PolygonsVoronoi.h"
 #include "utils/HalfEdgeGraph.h"
 #include "utils/PolygonsSegmentIndex.h"
 #include "utils/polygon.h"
@@ -80,9 +79,9 @@ class SkeletalTrapezoidation
      */
     const BeadingStrategy& beading_strategy_;
 
-    Polygons tmp_polys;
-
 public:
+    using Segment = PolygonsSegmentIndex;
+
     /*!
      * A skeletal graph through the polygons that we need to fill with beads.
      *
@@ -150,29 +149,25 @@ protected:
      * mapping each voronoi VD edge to the corresponding halfedge HE edge
      * In case the result segment is discretized, we map the VD edge to the *last* HE edge
      */
-    std::unordered_map<PolygonsVoronoi::Edge*, edge_t*> vd_edge_to_he_edge_;
-    std::unordered_map<PolygonsVoronoi::Vertex*, node_t*> vd_node_to_he_node_;
+    std::unordered_map<vd_t::edge_type*, edge_t*> vd_edge_to_he_edge_;
+    std::unordered_map<vd_t::vertex_type*, node_t*> vd_node_to_he_node_;
 
     /*!
      * Compute the skeletal trapezoidation decomposition of the input shape.
-     * 
+     *
      * Compute the Voronoi Diagram (VD) and transfer all inside edges into our half-edge (HE) datastructure.
-     * 
+     *
      * The algorithm is currently a bit overcomplicated, because the discretization of parabolic edges is performed at the same time as all edges are being transfered,
      * which means that there is no one-to-one mapping from VD edges to HE edges.
      * Instead we map from a VD edge to the last HE edge.
      * This could be cimplified by recording the edges which should be discretized and discretizing the mafterwards.
-     * 
+     *
      * Another complication arises because the VD uses floating logic, which can result in zero-length segments after rounding to integers.
      * We therefore collapse edges and their whole cells afterwards.
      */
     void constructFromPolygons(const Polygons& polys);
 
-    void tryGenerateVoronoi(const Polygons& polygons, Segments& segments, PolygonsVoronoi& polygons_voronoi);
-
-    bool checkVoronoiDistance(PolygonsVoronoi& polygons_voronoi);
-
-    node_t& makeNode(PolygonsVoronoi::Vertex& vd_node, Point2LL p); //!< Get the node which the VD node maps to, or create a new mapping if there wasn't any yet.
+    node_t& makeNode(vd_t::vertex_type& vd_node, Point2LL p); //!< Get the node which the VD node maps to, or create a new mapping if there wasn't any yet.
 
     /*!
      * (Eventual) returned 'polylines per index' result (from generateToolpaths):
@@ -188,7 +183,7 @@ protected:
     void transferEdge(
         Point2LL from,
         Point2LL to,
-        PolygonsVoronoi::Edge& vd_edge,
+        vd_t::edge_type& vd_edge,
         edge_t*& prev_edge,
         Point2LL& start_source_point,
         Point2LL& end_source_point,
@@ -220,7 +215,7 @@ protected:
      * \return A number of coordinates along the edge where the edge is broken
      * up into discrete pieces.
      */
-    std::vector<Point2LL> discretize(const PolygonsVoronoi::Edge& segment, const std::vector<Point2LL>& points, const std::vector<Segment>& segments);
+    std::vector<Point2LL> discretize(const vd_t::edge_type& segment, const std::vector<Point2LL>& points, const std::vector<Segment>& segments);
 
     /*!
      * Compute the range of line segments that surround a cell of the skeletal
@@ -638,10 +633,6 @@ protected:
      * Genrate small segments for local maxima where the beading would only result in a single bead
      */
     void generateLocalMaximaSingleBeads();
-
-    bool checkVoronoiEdgeTwin(PolygonsVoronoi& polygons_voronoi);
-
-    bool checkVoronoiSmallEdge(PolygonsVoronoi& polygons_voronoi);
 };
 
 } // namespace cura

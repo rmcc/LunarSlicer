@@ -12,9 +12,9 @@
 #include <scripta/logger.h>
 #include <spdlog/spdlog.h>
 
+#include "BoostInterface.hpp"
 #include "settings/types/Ratio.h"
 #include "utils/VoronoiUtils.h"
-#include "utils/PolygonsVoronoi.h"
 #include "utils/linearAlg2D.h"
 #include "utils/macros.h"
 
@@ -25,7 +25,7 @@
 namespace cura
 {
 
-SkeletalTrapezoidation::node_t& SkeletalTrapezoidation::makeNode(PolygonsVoronoi::Vertex& vd_node, Point2LL p)
+SkeletalTrapezoidation::node_t& SkeletalTrapezoidation::makeNode(vd_t::vertex_type& vd_node, Point2LL p)
 {
     auto he_node_it = vd_node_to_he_node_.find(&vd_node);
     if (he_node_it == vd_node_to_he_node_.end())
@@ -44,7 +44,7 @@ SkeletalTrapezoidation::node_t& SkeletalTrapezoidation::makeNode(PolygonsVoronoi
 void SkeletalTrapezoidation::transferEdge(
     Point2LL from,
     Point2LL to,
-    PolygonsVoronoi::Edge& vd_edge,
+    vd_t::edge_type& vd_edge,
     edge_t*& prev_edge,
     Point2LL& start_source_point,
     Point2LL& end_source_point,
@@ -158,7 +158,7 @@ void SkeletalTrapezoidation::transferEdge(
     }
 }
 
-std::vector<Point2LL> SkeletalTrapezoidation::discretize(const PolygonsVoronoi::Edge& vd_edge, const std::vector<Point2LL>& points, const std::vector<Segment>& segments)
+std::vector<Point2LL> SkeletalTrapezoidation::discretize(const vd_t::edge_type& vd_edge, const std::vector<Point2LL>& points, const std::vector<Segment>& segments)
 {
     /*Terminology in this function assumes that the edge moves horizontally from
     left to right. This is not necessarily the case; the edge can go in any
@@ -399,19 +399,49 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons& polys)
 
     std::vector<Point2LL> points; // Remains empty
 
-
     std::vector<Segment> segments;
-    polygonsToSegments(polys, segments);
-
-    PolygonsVoronoi polygons_voronoi;
-    tryGenerateVoronoi(polys, segments, polygons_voronoi);
-
-    for (PolygonsVoronoi::Cell cell : polygons_voronoi.cells())
+    for (size_t poly_idx = 0; poly_idx < polys.size(); poly_idx++)
     {
-        Point2LL start_source_point = VoronoiUtils::p(cell.incident_edge()->vertex1());
-        Point2LL end_source_point = VoronoiUtils::p(cell.incident_edge()->vertex0());
-        PolygonsVoronoi::Edge* starting_vonoroi_edge = cell.incident_edge()->next();
-        PolygonsVoronoi::Edge* ending_vonoroi_edge = cell.incident_edge()->prev();
+        ConstPolygonRef poly = polys[poly_idx];
+        for (size_t point_idx = 0; point_idx < poly.size(); point_idx++)
+        {
+            segments.emplace_back(&polys, poly_idx, point_idx);
+        }
+    }
+
+    vd_t vonoroi_diagram;
+    construct_voronoi(segments.begin(), segments.end(), &vonoroi_diagram);
+
+    for (vd_t::cell_type cell : vonoroi_diagram.cells())
+    {
+        if (! cell.incident_edge())
+        { // There is no spoon
+            continue;
+        }
+        Point2LL start_source_point;
+        Point2LL end_source_point;
+        vd_t::edge_type* starting_vonoroi_edge = nullptr;
+        vd_t::edge_type* ending_vonoroi_edge = nullptr;
+        // Compute and store result in above variables
+
+        if (cell.contains_point())
+        {
+            const bool keep_going = computePointCellRange(cell, start_source_point, end_source_point, starting_vonoroi_edge, ending_vonoroi_edge, points, segments);
+            if (! keep_going)
+            {
+                continue;
+            }
+        }
+        else
+        {
+            computeSegmentCellRange(cell, start_source_point, end_source_point, starting_vonoroi_edge, ending_vonoroi_edge, points, segments);
+        }
+
+        if (! starting_vonoroi_edge || ! ending_vonoroi_edge)
+        {
+            assert(false && "Each cell should start / end in a polygon vertex");
+            continue;
+        }
 
         // Copy start to end edge to graph
         edge_t* prev_edge = nullptr;
@@ -428,7 +458,7 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons& polys)
         starting_node->data_.distance_to_boundary_ = 0;
 
         graph_.makeRib(prev_edge, start_source_point, end_source_point);
-        for (PolygonsVoronoi::Edge* vd_edge = starting_vonoroi_edge->next(); vd_edge != ending_vonoroi_edge; vd_edge = vd_edge->next())
+        for (vd_t::edge_type* vd_edge = starting_vonoroi_edge->next(); vd_edge != ending_vonoroi_edge; vd_edge = vd_edge->next())
         {
             assert(vd_edge->is_finite());
             Point2LL v1 = VoronoiUtils::p(vd_edge->vertex0());
@@ -456,92 +486,6 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons& polys)
         }
     }
 }
-
-void SkeletalTrapezoidation::tryGenerateVoronoi(const Polygons& polygons, Segments& segments, PolygonsVoronoi& polygons_voronoi)
-{
-    polygonsToSegments(polygons, segments);
-    polygons_voronoi.constructVoronoi(segments, polygons);
-
-    tmp_polys = polygons;
-
-    int try_count = 4;
-    while (try_count > 0) {
-        if (!checkVoronoiDistance(polygons_voronoi)) {
-            spdlog::debug("Check voronoi distance error for parse voronoi for try_count: {}", try_count);
-            tmp_polys = tmp_polys.offset(10);
-            tmp_polys.print("tmp_polys");
-            segments.clear();
-            polygonsToSegments(tmp_polys, segments);
-            polygons_voronoi.constructVoronoi(segments, tmp_polys);
-        } else if (!checkVoronoiEdgeTwin(polygons_voronoi)) {
-            spdlog::debug("Check edge twin error for parse voronoi for try_count: {}", try_count);
-            tmp_polys = tmp_polys.offset(10);
-            tmp_polys.print("tmp_polys");
-            segments.clear();
-            polygonsToSegments(tmp_polys, segments);
-            polygons_voronoi.constructVoronoi(segments, tmp_polys);
-        } else {
-            break ;
-        }
-        try_count--;
-    }
-}
-
-bool SkeletalTrapezoidation::checkVoronoiDistance(PolygonsVoronoi& polygons_voronoi) {
-    for (const auto& cell : polygons_voronoi.cells())
-    {
-        Point2LL start_source_point = VoronoiUtils::p(cell.incident_edge()->vertex0());
-        Point2LL end_source_point = VoronoiUtils::p(cell.incident_edge()->vertex1());
-        for (auto* edge = cell.incident_edge()->next(); edge != cell.incident_edge()->prev(); edge = edge->next())
-        {
-            Point2LL p = VoronoiUtils::p(edge->vertex1());
-            Point2LL dist_p = LinearAlg2D::getClosestOnLine(p, start_source_point, end_source_point);
-            coord_t dist = vSize2(dist_p - p);
-            if (dist == 0) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-bool SkeletalTrapezoidation::checkVoronoiEdgeTwin(PolygonsVoronoi& polygons_voronoi)
-{
-    for (const auto& item : polygons_voronoi.cells())
-    {
-        PolygonsVoronoi::Edge* e = item.incident_edge()->next();
-        while (e != item.incident_edge()) {
-            if (!e->twin()) {
-                return false;
-            }
-            e = e->next();
-        }
-    }
-    return true;
-}
-
-bool SkeletalTrapezoidation::checkVoronoiSmallEdge(PolygonsVoronoi& polygons_voronoi)
-{
-    for (const auto& item : polygons_voronoi.cells())
-    {
-        PolygonsVoronoi::Edge* e = item.incident_edge()->next();
-        while (e != item.incident_edge()) {
-            auto* v0 = e->vertex0();
-            auto* v1 = e->vertex1();
-            double len2 = (v0->x() - v1->x()) * (v0->x() - v1->x()) + (v0->y() - v1->y()) * (v0->y() - v1->y());
-
-            if (len2 < 0.01) {
-                return false;
-            }
-
-            e = e->next();
-        }
-    }
-    return true;
-}
-
-
-
 
 void SkeletalTrapezoidation::separatePointyQuadEndNodes()
 {
