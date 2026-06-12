@@ -20,10 +20,9 @@ public:
     int color;
 
     PolygonsSegmentIndex();
+    PolygonsSegmentIndex(const Shape* polygons, unsigned int poly_idx, unsigned int point_idx);
 
-    PolygonsSegmentIndex(const Polygons* polygons, unsigned int poly_idx, unsigned int point_idx);
-
-    PolygonsSegmentIndex(const Polygons* polygons, unsigned int poly_idx, unsigned int point_idx, int color);
+    PolygonsSegmentIndex(const Shape* polygons, unsigned int poly_idx, unsigned int point_idx, int color);
 
     Point2LL from() const;
 

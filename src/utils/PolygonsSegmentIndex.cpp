@@ -11,12 +11,12 @@ PolygonsSegmentIndex::PolygonsSegmentIndex()
 {
 }
 
-PolygonsSegmentIndex::PolygonsSegmentIndex(const Polygons* polygons, unsigned int poly_idx, unsigned int point_idx)
+PolygonsSegmentIndex::PolygonsSegmentIndex(const Shape* polygons, unsigned int poly_idx, unsigned int point_idx)
     : PolygonsPointIndex(polygons, poly_idx, point_idx)
 {
 }
 
-PolygonsSegmentIndex::PolygonsSegmentIndex(const Polygons* polygons, unsigned int poly_idx, unsigned int point_idx, int color) : PolygonsPointIndex(polygons, poly_idx, point_idx),color(color) {}
+PolygonsSegmentIndex::PolygonsSegmentIndex(const Shape* polygons, unsigned int poly_idx, unsigned int point_idx, int color) : PolygonsPointIndex(polygons, poly_idx, point_idx),color(color) {}
 
 Point2LL PolygonsSegmentIndex::from() const
 {

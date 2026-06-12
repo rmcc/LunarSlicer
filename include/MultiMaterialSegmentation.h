@@ -36,10 +36,10 @@ class MultiMaterialSegmentation
 
     int scale = 1;
 
-    std::vector<Polygons> m_colored_lines_polys_list;
-    std::vector<Polygons> m_colored_top_faces_polys_list;
-    std::vector<Polygons> m_colored_bottom_faces_polys_list;
-    std::vector<Polygons> m_colored_faces_polys_list;
+    std::vector<Shape> m_colored_lines_polys_list;
+    std::vector<Shape> m_colored_top_faces_polys_list;
+    std::vector<Shape> m_colored_bottom_faces_polys_list;
+    std::vector<Shape> m_colored_faces_polys_list;
 
 public:
     MultiMaterialSegmentation(size_t size)
@@ -56,17 +56,17 @@ public:
 private:
     void paintingSlicerLayers(Slicer* slicer, Slicer* color_slicer);
 
-    Polygons paintingSlicerLayerColoredLines(SlicerLayer& slicer_layer);
+    Shape paintingSlicerLayerColoredLines(SlicerLayer& slicer_layer);
 
-    void coloredLineSegmentMatching(Polygons& polys, Polygons& color_line_polys, Polygons& out_color_polys, std::vector<Segment>& out_color_segments);
+    void coloredLineSegmentMatching(Shape& polys, Shape& color_line_polys, Shape& out_color_polys, std::vector<Segment>& out_color_segments);
 
-    void coloredLineSegmentMatching2(Polygons& polys, Polygons& color_line_polys, Polygons& out_color_polys, std::vector<Segment>& out_color_segments);
+    void coloredLineSegmentMatching2(Shape& polys, Shape& color_line_polys, Shape& out_color_polys, std::vector<Segment>& out_color_segments);
 
-    Polygons toVoronoiColorPolygons(std::vector<Segment>& colored_segments);
+    Shape toVoronoiColorPolygons(std::vector<Segment>& colored_segments);
 
-    Line linePolygonsIntersection(Point2LL& p1, Point2LL& p2, Polygons& line_polys);
+    Line linePolygonsIntersection(Point2LL& p1, Point2LL& p2, Shape& line_polys);
 
-    Polygons paintingSlicerLayerColoredFaces(SlicerLayer& layer, const Mesh* p_mesh, coord_t min_z, coord_t max_z);
+    Shape paintingSlicerLayerColoredFaces(SlicerLayer& layer, const Mesh* p_mesh, coord_t min_z, coord_t max_z);
 
     Point3LL getPoint3ByZ(Point3LL& p1, Point3LL& p2, int z);
 };
