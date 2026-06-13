@@ -526,17 +526,12 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching2(Shape& polys, Shape&
         out_color_polys.push_back(poly);
     }
 
-    assert(polys.size() == out_color_polys.size());
-    assert(out_color_polys.size() == color_segments_tmp.size());
 
     // Check the direction of polygons after splicing
     std::vector<int> areas;
-    for (int i = 0; i < polys.size(); ++i)
-    {
-        areas.push_back(polys[i].area());
-    }
     for (int i = 0; i < out_color_polys.size(); ++i)
     {
+        areas.push_back(out_color_polys[i].area());
         int area = out_color_polys[i].area();
         int abs_area = std::abs(area);
         int min_area = std::abs(areas[0]) - abs_area;

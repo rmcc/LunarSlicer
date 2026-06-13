@@ -284,7 +284,7 @@ if (ENABLE_THREADING)
     use_threads(LunarSlicer)
 endif ()
 
-if (CMAKE_CXX_PLATFORM_ID STREQUAL "emscripten")
+if (EMSCRIPTEN)
     message(STATUS "Building for Emscripten")
     target_link_options(_CuraEngine
             PUBLIC
@@ -306,7 +306,7 @@ if (CMAKE_CXX_PLATFORM_ID STREQUAL "emscripten")
             $<$<CONFIG:Debug>:SHELL:-g3>
             $<$<CONFIG:Debug>:SHELL:-gsource-map>
             "SHELL:-lembind"
-            "SHELL:--embind-emit-tsd CuraEngine.d.ts"
+            "SHELL:--emit-tsd CuraEngine.d.ts"
     )
 endif ()
 
