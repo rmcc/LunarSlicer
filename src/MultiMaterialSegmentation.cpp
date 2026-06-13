@@ -1,3 +1,5 @@
+// Force cmath to include M_PI
+#define _USE_MATH_DEFINES
 #include "MultiMaterialSegmentation.h"
 #include "Application.h"
 #include "BoostInterface.hpp"
