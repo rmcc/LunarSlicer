@@ -262,7 +262,7 @@ size_t Shape::findInside(const Point2LL& p, bool border_result) const
 {
     if (empty())
     {
-        return 0;
+        return NO_INDEX;
     }
 
     // NOTE: Keep these vectors fixed-size, they replace an (non-standard, sized at runtime) arrays.
@@ -888,6 +888,25 @@ void Shape::simplify(ClipperLib::PolyFillType fill_type)
         polygon.setExplicitelyClosed(clipper_explicitely_closed_); // Required for polygon newly created by resize()
         polygon.setPoints(std::move(ret[i]));
     }
+}
+
+std::vector<float> Shape::intersectionsWithSegment(const Point2LL& start, const Point2LL& end) const
+{
+    std::vector<float> result;
+
+    for (const Polygon& polygon : getLines())
+    {
+        for (auto iterator = polygon.beginSegments(); iterator != polygon.endSegments(); ++iterator)
+        {
+            float t, u;
+            if (LinearAlg2D::segmentSegmentIntersection(start, end, (*iterator).start, (*iterator).end, t, u))
+            {
+                result.push_back(t);
+            }
+        }
+    }
+
+    return result;
 }
 
 void Shape::ensureManifold()

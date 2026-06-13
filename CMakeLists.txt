@@ -259,6 +259,7 @@ target_link_libraries(_CuraEngine
 
 target_compile_definitions(_CuraEngine PRIVATE
         $<$<BOOL:${ENABLE_SENTRY}>:SENTRY_URL=\"${SENTRY_URL}\">
+        SENTRY_ENVIRONMENT=\"${SENTRY_ENVIRONMENT}\"
 )
 
 if (NOT WIN32)
@@ -315,6 +316,7 @@ target_link_libraries(LunarSlicer PRIVATE
 )
 target_compile_definitions(LunarSlicer PRIVATE
         $<$<BOOL:${ENABLE_SENTRY}>:SENTRY_URL=\"${SENTRY_URL}\">
+        SENTRY_ENVIRONMENT=\"${SENTRY_ENVIRONMENT}\"
         VERSION=\"${CURA_ENGINE_VERSION}\"
 )
 
