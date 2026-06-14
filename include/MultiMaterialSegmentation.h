@@ -5,7 +5,7 @@
 #include <boost/polygon/voronoi_diagram.hpp>
 #include <vector>
 
-#include "SkeletalTrapezoidationGraph.h"
+#include "arachne/SkeletalTrapezoidationGraph.h"
 #include "slicer.h"
 #include "utils/PolygonsSegmentIndex.h"
 #include "utils/polygonUtils.h"

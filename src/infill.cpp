@@ -12,12 +12,15 @@
 #include <spdlog/spdlog.h>
 
 #include "WallToolPaths.h"
+#include "arachne/SkeletalTrapezoidation.h"
 #include "geometry/OpenPolyline.h"
+#include "geometry/Point2D.h"
 #include "geometry/PointMatrix.h"
 #include "infill/GyroidInfill.h"
 #include "infill/ImageBasedDensityProvider.h"
 #include "infill/LightningGenerator.h"
 #include "infill/NoZigZagConnectorProcessor.h"
+#include "infill/RegularNGonalInfill.h"
 #include "infill/SierpinskiFill.h"
 #include "infill/SierpinskiFillProvider.h"
 #include "infill/SubDivCube.h"
@@ -29,7 +32,6 @@
 #include "utils/Simplify.h"
 #include "utils/UnionFind.h"
 #include "utils/linearAlg2D.h"
-#include "utils/polygonUtils.h"
 
 /*!
  * Function which returns the scanline_idx for a given x coordinate
@@ -162,8 +164,8 @@ void Infill::generate(
         || (zig_zaggify_
             && (pattern_ == EFillMethod::LINES // Zig-zaggified infill patterns print their zags along the walls.
                 || pattern_ == EFillMethod::TRIANGLES || pattern_ == EFillMethod::GRID || pattern_ == EFillMethod::CUBIC || pattern_ == EFillMethod::TETRAHEDRAL
-                || pattern_ == EFillMethod::QUARTER_CUBIC || pattern_ == EFillMethod::TRIHEXAGON || pattern_ == EFillMethod::GYROID || pattern_ == EFillMethod::CROSS
-                || pattern_ == EFillMethod::CROSS_3D))
+                || pattern_ == EFillMethod::QUARTER_CUBIC || pattern_ == EFillMethod::TRIHEXAGON || pattern_ == EFillMethod::GYROID || pattern_ == EFillMethod::HONEYCOMB
+                || pattern_ == EFillMethod::OCTAGON || pattern_ == EFillMethod::CROSS || pattern_ == EFillMethod::CROSS_3D))
         || infill_multiplier_ % 2
                == 0) // Multiplied infill prints loops of infill, partly along the walls, if even. For odd multipliers >1 it gets offset by the multiply algorithm itself.
     {
@@ -316,6 +318,12 @@ void Infill::_generate(
         assert(lightning_trees); // "Cannot generate Lightning infill without a generator!\n"
         generateLightningInfill(lightning_trees, result_lines);
         break;
+    case EFillMethod::HONEYCOMB:
+        generateHoneycombInfill(result_lines, result_polygons);
+        break;
+    case EFillMethod::OCTAGON:
+        generateOctagonInfill(result_lines, result_polygons);
+        break;
     case EFillMethod::PLUGIN:
     {
 #ifdef ENABLE_PLUGINS // FIXME: I don't like this conditional block outside of the plugin scope.
@@ -348,7 +356,7 @@ void Infill::_generate(
 
     if (! skip_line_stitching_
         && (zig_zaggify_ || pattern_ == EFillMethod::CROSS || pattern_ == EFillMethod::CROSS_3D || pattern_ == EFillMethod::CUBICSUBDIV || pattern_ == EFillMethod::GYROID
-            || pattern_ == EFillMethod::ZIG_ZAG))
+            || pattern_ == EFillMethod::HONEYCOMB || pattern_ == EFillMethod::OCTAGON || pattern_ == EFillMethod::ZIG_ZAG))
     { // don't stich for non-zig-zagged line infill types
         OpenLinesSet stitched_lines;
         OpenPolylineStitcher::stitch(result_lines, stitched_lines, result_polygons, infill_line_width_);
@@ -419,11 +427,21 @@ void Infill::multiplyInfill(Shape& result_polygons, OpenLinesSet& result_lines)
     }
 }
 
-void Infill::generateGyroidInfill(OpenLinesSet& result_lines, Shape& result_polygons)
+void Infill::generateGyroidInfill(OpenLinesSet& result_polylines, Shape& result_polygons)
 {
-    OpenLinesSet line_segments;
-    GyroidInfill::generateTotalGyroidInfill(line_segments, zig_zaggify_, line_distance_, inner_contour_, z_);
-    OpenPolylineStitcher::stitch(line_segments, result_lines, result_polygons, infill_line_width_);
+    GyroidInfill().generateInfill(result_polylines, result_polygons, zig_zaggify_, line_distance_, inner_contour_, z_, infill_line_width_, fill_angle_);
+}
+
+void Infill::generateHoneycombInfill(OpenLinesSet& result_polylines, Shape& result_polygons)
+{
+    RegularNGonalInfill(RegularNGonalInfill::RegularNGonType::Hexagon)
+        .generateInfill(result_polylines, result_polygons, zig_zaggify_, line_distance_, inner_contour_, z_, infill_line_width_, fill_angle_);
+}
+
+void Infill::generateOctagonInfill(OpenLinesSet& result_polylines, Shape& result_polygons)
+{
+    RegularNGonalInfill(RegularNGonalInfill::RegularNGonType::Octagon)
+        .generateInfill(result_polylines, result_polygons, zig_zaggify_, line_distance_, inner_contour_, z_, infill_line_width_, fill_angle_);
 }
 
 void Infill::generateLightningInfill(const std::shared_ptr<LightningLayer>& trees, OpenLinesSet& result_lines)
@@ -567,7 +585,7 @@ void Infill::addLineInfill(
             break;
         }
         std::vector<coord_t>& crossings = cut_list[scanline_idx];
-        std::sort(crossings.begin(), crossings.end()); // sort by increasing Y coordinates
+        std::stable_sort(crossings.begin(), crossings.end()); // sort by increasing Y coordinates
         for (unsigned int crossing_idx = 0; crossing_idx + 1 < crossings.size(); crossing_idx += 2)
         {
             if (crossings[crossing_idx + 1] - crossings[crossing_idx] < infill_line_width_ / 5)
@@ -759,7 +777,7 @@ void Infill::generateLinearBasedInfill(
         {
             auto& crossings = crossings_per_scanline[scanline_index - min_scanline_index];
             // Sorts them by Y coordinate.
-            std::sort(crossings.begin(), crossings.end());
+            std::stable_sort(crossings.begin(), crossings.end());
             // Combine each 2 subsequent crossings together.
             for (long crossing_index = 0; crossing_index < static_cast<long>(crossings.size()) - 1; crossing_index += 2)
             {
@@ -883,7 +901,7 @@ void Infill::connectLines(OpenLinesSet& result_lines)
             Point2LL vertex_after = inner_contour_polygon[vertex_index];
 
             // Sort crossings on every line by how far they are from their initial point.
-            std::sort(
+            std::stable_sort(
                 crossings_on_polygon_segment.begin(),
                 crossings_on_polygon_segment.end(),
                 [&vertex_before, polygon_index, vertex_index](InfillLineSegment* left_hand_side, InfillLineSegment* right_hand_side)

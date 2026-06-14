@@ -148,6 +148,24 @@ void LinesSet<LineType>::translate(const Point2LL& delta)
     }
 }
 
+template<class LineType>
+void LinesSet<LineType>::applyMatrix(const PointMatrix& matrix)
+{
+    for (LineType& line : *this)
+    {
+        line.applyMatrix(matrix);
+    }
+}
+
+template<class LineType>
+void LinesSet<LineType>::applyMatrix(const Point3Matrix& matrix)
+{
+    for (LineType& line : *this)
+    {
+        line.applyMatrix(matrix);
+    }
+}
+
 template<>
 Shape LinesSet<ClosedPolyline>::offset(coord_t distance, ClipperLib::JoinType join_type, double miter_limit) const
 {
@@ -160,7 +178,7 @@ Shape LinesSet<ClosedPolyline>::offset(coord_t distance, ClipperLib::JoinType jo
         Shape result;
         for (const ClosedPolyline& line : getLines())
         {
-            result.emplace_back(line.getPoints(), line.isExplicitelyClosed());
+            result.emplace_back(line.getPoints(), line.isExplicitlyClosed());
         }
         return result;
     }
@@ -207,6 +225,30 @@ Shape OpenLinesSet::offset(coord_t distance, ClipperLib::JoinType join_type, dou
     clipper.Execute(result_paths, static_cast<double>(distance));
 
     return Shape{ std::move(result_paths) };
+}
+
+template<>
+[[nodiscard]] OpenLinesSet OpenLinesSet::difference(const Shape& other) const
+{
+    if (empty())
+    {
+        return {};
+    }
+    if (other.empty())
+    {
+        return *this;
+    }
+
+    ClipperLib::PolyTree ret;
+    ClipperLib::Clipper clipper(clipper_init);
+    addPaths(clipper, ClipperLib::ptSubject);
+    other.addPaths(clipper, ClipperLib::ptClip);
+    clipper.Execute(ClipperLib::ctDifference, ret);
+
+    ClipperLib::Paths result_paths;
+    ClipperLib::OpenPathsFromPolyTree(ret, result_paths);
+
+    return OpenLinesSet(std::move(result_paths));
 }
 
 template<class LineType>
@@ -318,6 +360,8 @@ template OpenLinesSet OpenLinesSet::splitIntoSegments() const;
 template coord_t OpenLinesSet::length() const;
 template Shape OpenLinesSet::createTubeShape(const coord_t inner_offset, const coord_t outer_offset) const;
 template void OpenLinesSet::translate(const Point2LL& delta);
+template void OpenLinesSet::applyMatrix(const PointMatrix& matrix);
+template void OpenLinesSet::applyMatrix(const Point3Matrix& matrix);
 template void OpenLinesSet::removeDegenerateVerts();
 template void OpenLinesSet::addPaths(ClipperLib::Clipper& clipper, ClipperLib::PolyType PolyTyp) const;
 template void OpenLinesSet::addPaths(ClipperLib::ClipperOffset& clipper, ClipperLib::JoinType jointType, ClipperLib::EndType endType) const;
@@ -332,6 +376,8 @@ template OpenLinesSet ClosedLinesSet::splitIntoSegments() const;
 template coord_t ClosedLinesSet::length() const;
 template Shape ClosedLinesSet::createTubeShape(const coord_t inner_offset, const coord_t outer_offset) const;
 template void ClosedLinesSet::translate(const Point2LL& delta);
+template void ClosedLinesSet::applyMatrix(const PointMatrix& matrix);
+template void ClosedLinesSet::applyMatrix(const Point3Matrix& matrix);
 template void ClosedLinesSet::removeDegenerateVerts();
 template void ClosedLinesSet::addPaths(ClipperLib::Clipper& clipper, ClipperLib::PolyType PolyTyp) const;
 template void ClosedLinesSet::addPaths(ClipperLib::ClipperOffset& clipper, ClipperLib::JoinType jointType, ClipperLib::EndType endType) const;
@@ -347,6 +393,8 @@ template OpenLinesSet LinesSet<Polygon>::splitIntoSegments() const;
 template coord_t LinesSet<Polygon>::length() const;
 template Shape LinesSet<Polygon>::createTubeShape(const coord_t inner_offset, const coord_t outer_offset) const;
 template void LinesSet<Polygon>::translate(const Point2LL& delta);
+template void LinesSet<Polygon>::applyMatrix(const PointMatrix& matrix);
+template void LinesSet<Polygon>::applyMatrix(const Point3Matrix& matrix);
 template void LinesSet<Polygon>::removeDegenerateVerts();
 template void LinesSet<Polygon>::addPaths(ClipperLib::Clipper& clipper, ClipperLib::PolyType PolyTyp) const;
 template void LinesSet<Polygon>::addPaths(ClipperLib::ClipperOffset& clipper, ClipperLib::JoinType jointType, ClipperLib::EndType endType) const;

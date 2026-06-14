@@ -11,6 +11,7 @@
 #include "SpaceFillType.h"
 #include "gcodeExport.h"
 #include "geometry/LinesSet.h"
+#include "geometry/MendedShape.h"
 #include "geometry/OpenLinesSet.h"
 #include "geometry/Polygon.h"
 #include "pathPlanning/GCodePath.h"
@@ -37,6 +38,7 @@ namespace cura
 class Comb;
 class SliceDataStorage;
 class LayerPlanBuffer;
+class STHalfEdge;
 
 template<typename PathType>
 class PathAdapter;
@@ -56,7 +58,9 @@ class LayerPlan : public NoCopy
     friend class LayerPlanBuffer;
 #ifdef BUILD_TESTS
     friend class AddTravelTest;
-    friend class FffGcodeWriterTest_SurfaceGetsExtraInfillLinesUnderIt_Test;
+    friend class DISABLED_FffGcodeWriterTest_SurfaceGetsExtraInfillLinesUnderIt_Test;
+    friend class AntiOozeAmountsTest;
+    FRIEND_TEST(AntiOozeAmountsTest, ComputeAntiOozeAmounts);
 #endif
 
 public:
@@ -69,7 +73,6 @@ public:
     const PathConfigStorage configs_storage_; //!< The line configs for this layer for each feature type
     const coord_t z_;
     coord_t final_travel_z_;
-    bool mode_skip_agressive_merge_; //!< Whether to give every new path the 'skip_agressive_merge_hint' property (see GCodePath); default is false.
 
 private:
     // Indicates how coasting should be processed on the given path.
@@ -87,15 +90,45 @@ private:
         Point3LL coasting_start_pos;
     };
 
+    struct TravelDurations
+    {
+        Duration z_hop; //!< The duration of the Z hop start and end
+        Duration travel; //!< The duration of the full travel
+    };
+
+    struct AntiOozeSettings
+    {
+        double distance;
+        Velocity speed;
+        Ratio during_travel_ratio;
+    };
+
+    struct AntiOozeIntermediateAmounts
+    {
+        Ratio actual_during_travel_ratio;
+        Duration total_expected_duration;
+        Duration expected_duration_during_travel;
+        double expected_amount_during_travel;
+        double actual_amount_during_travel;
+    };
+
+    enum class TravelRetractionState
+    {
+        None, // There is no retraction/prime
+        Retracting, // We are retracting while traveling
+        Travelling, // We are traveling, but neither retracting nor priming, just moving
+        Priming, // We are priming while traveling
+    };
+
     const SliceDataStorage& storage_; //!< The polygon data obtained from FffPolygonProcessor
     const LayerIndex layer_nr_; //!< The layer number of this layer plan
     const bool is_initial_layer_; //!< Whether this is the first layer (which might be raft)
     const Raft::LayerType layer_type_; //!< Which part of the raft, airgap or model this layer is.
     coord_t layer_thickness_;
 
-    std::vector<Point2LL> layer_start_pos_per_extruder_; //!< The starting position of a layer for each extruder
+    std::vector<Point3LL> layer_start_pos_per_extruder_; //!< The starting position of a layer for each extruder (note: z\height is offset, not absolute)
     std::vector<bool> has_prime_tower_planned_per_extruder_; //!< For each extruder, whether the prime tower is planned yet or not.
-    std::optional<Point2LL> last_planned_position_; //!< The last planned XY position of the print head (if known)
+    std::optional<Point3LL> last_planned_position_; //!< The last planned XYZ position of the print head (if known) (note: z\height is offset, not absolute)
 
     std::shared_ptr<const SliceMeshStorage> current_mesh_; //!< The mesh of the last planned move.
 
@@ -121,6 +154,7 @@ private:
     Comb* comb_;
     coord_t comb_move_inside_distance_; //!< Whenever using the minimum boundary for combing it tries to move the coordinates inside by this distance after calculating the combing.
     Shape bridge_wall_mask_; //!< The regions of a layer part that are not supported, used for bridging
+    AABB bridge_wall_mask_bb_; //!< Cached bounding box for the above value.
     std::vector<OverhangMask> overhang_masks_; //!< The regions of a layer part where the walls overhang, calculated for multiple overhang angles. The latter is the most
                                                //!< overhanging. For a visual explanation of the result, see doc/gradual_overhang_speed.svg
     Shape seam_overhang_mask_; //!< The regions of a layer part where the walls overhang, specifically as defined for the seam
@@ -133,6 +167,8 @@ private:
     coord_t max_overhang_length_{ 0 }; //!< From all consecutive overhanging moves in the layer, this is the longest one
 
     bool min_layer_time_used = false; //!< Wether or not the minimum layer time (cool_min_layer_time) was actually used in this layerplan.
+
+    std::map<const SliceMeshStorage*, MixedLinesSet> infill_lines_; //!< Infill lines generated for this layer
 
     const std::vector<FanSpeedLayerTimeSettings> fan_speed_layer_time_settings_per_extruder_;
 
@@ -384,6 +420,10 @@ public:
      */
     void planPrime(double prime_blob_wipe_length = 10.0);
 
+    void setGeneratedInfillLines(const SliceMeshStorage* mesh, const MixedLinesSet& infill_lines);
+
+    const MixedLinesSet getGeneratedInfillLines(const SliceMeshStorage* mesh) const;
+
     /*!
      * Add an extrusion move to a certain point, optionally with a different flow than the one in the \p config.
      *
@@ -479,6 +519,7 @@ public:
      * If unset, this causes it to start near the last planned location.
      * \param scarf_seam Indicates whether we may use a scarf seam for the path
      * \param smooth_speed Indicates whether we may use a speed gradient for the path
+     * \param texture_data_provider The texture provider to be used to place the seam
      */
     void addPolygonsByOptimizer(
         const Shape& polygons,
@@ -492,10 +533,36 @@ public:
         bool reverse_order = false,
         const std::optional<Point2LL> start_near_location = std::optional<Point2LL>(),
         bool scarf_seam = false,
-        bool smooth_acceleration = false);
+        bool smooth_speed = false,
+        const std::shared_ptr<TextureDataProvider>& texture_data_provider = nullptr);
+
+    /*!
+     * Adds infill polygons to the gcode with optimized order.
+     *
+     * In case we need to generate extra inwards moves for the infill, we cannot treat them as polygons anymore, since the lines will be un-closed. Thus, the resulting open
+     * polylines are returned in \p remaining_lines and should be re-added to the gcode, e.g. by using addLinesByOptimizer().
+     *
+     * @param polygons The infill polygons to be added
+     * @param[out] remaining_lines The list to be filled with generates open polylines. The given list may be non-empty, only new lines will be appended.     * @param config The
+     * config with which to print the polygon lines
+     * @param settings The current settings to retrieve values from
+     * @param add_extra_inwards_move Indicates whether extra start/end inwards extrusion moves will be generated
+     * @param near_start_location Optional: Location near where to add the first line. If not provided the last position is used.
+     */
+    void addInfillPolygonsByOptimizer(
+        const Shape& polygons,
+        OpenLinesSet& remaining_lines,
+        const GCodePathConfig& config,
+        const Settings& settings,
+        const bool add_extra_inwards_move = false,
+        const std::optional<Point2LL>& near_start_location = std::optional<Point2LL>());
 
     /*!
      * Add a single line that is part of a wall to the gcode.
+     * \param wall The wall line being printed
+     * \param segment_index The index of the segment of the wall line being printed
+     * \param segment_start_ratio When printing only a portion of the extrusion segment (e.g. for scarf seam), this is the ratio at which the current subsegment starts
+     * \param segment_end_ratio When printing only a portion of the extrusion segment (e.g. for scarf seam), this is the ratio at which the current subsegment ends
      * \param p0 The start vertex of the line.
      * \param p1 The end vertex of the line.
      * \param settings The settings which should apply to this line added to the
@@ -519,6 +586,10 @@ public:
      * the first bridge segment.
      */
     void addWallLine(
+        const PathAdapter<ExtrusionLine>& wall,
+        const size_t segment_index,
+        const Ratio& segment_start_ratio,
+        const Ratio& segment_end_ratio,
         const Point3LL& p0,
         const Point3LL& p1,
         const Settings& settings,
@@ -653,6 +724,9 @@ public:
      * \param fan_speed optional fan speed override for this path
      * \param reverse_print_direction Whether to reverse the optimized order and their printing direction.
      * \param order_requirements Pairs where first needs to be printed before second. Pointers are pointing to elements of \p lines
+     * \param extra_inwards_start_move_length The length of the extra inwards moves to be added at the start of each infill line
+     * \param extra_inwards_end_move_length The length of the extra inwards moves to be added at the end of each infill line
+     * \param extra_inwards_move_contour The contour to be considered in order to add the inwards moves
      */
     template<class LineType>
     void addLinesByOptimizer(
@@ -665,7 +739,10 @@ public:
         const std::optional<Point2LL> near_start_location = std::optional<Point2LL>(),
         const double fan_speed = GCodePathConfig::FAN_SPEED_DEFAULT,
         const bool reverse_print_direction = false,
-        const std::unordered_multimap<const Polyline*, const Polyline*>& order_requirements = PathOrderOptimizer<const Polyline*>::no_order_requirements_);
+        const std::unordered_multimap<const Polyline*, const Polyline*>& order_requirements = PathOrderOptimizer<const Polyline*>::no_order_requirements_,
+        const coord_t extra_inwards_start_move_length = 0,
+        const coord_t extra_inwards_end_move_length = 0,
+        const MendedShape& extra_inwards_move_contour = MendedShape());
 
     /*!
      * Add lines to the gcode with optimized order.
@@ -723,7 +800,8 @@ public:
         const coord_t exclude_distance = 0,
         const coord_t wipe_dist = 0,
         const Ratio flow_ratio = 1.0_r,
-        const double fan_speed = GCodePathConfig::FAN_SPEED_DEFAULT);
+        const double fan_speed = GCodePathConfig::FAN_SPEED_DEFAULT,
+        const bool interlaced = false);
 
     /*!
      * Add a spiralized slice of wall that is interpolated in X/Y between \p last_wall and \p wall.
@@ -836,6 +914,9 @@ private:
      * \param wipe_dist (optional) the distance wiped without extruding after laying down a line.
      * \param flow_ratio The ratio with which to multiply the extrusion amount
      * \param fan_speed optional fan speed override for this path
+     * \param extra_inwards_start_move_length The length of the extra inwards moves to be added at the start of each infill line
+     * \param extra_inwards_end_move_length The length of the extra inwards moves to be added at the end of each infill line
+     * \param extra_inwards_move_contour The contour to be considered in order to add the inwards moves
      */
     void addLinesInGivenOrder(
         const std::vector<PathOrdering<const Polyline*>>& lines,
@@ -843,7 +924,45 @@ private:
         const SpaceFillType space_fill_type,
         const coord_t wipe_dist,
         const Ratio flow_ratio,
-        const double fan_speed);
+        const double fan_speed,
+        const coord_t extra_inwards_start_move_length = 0,
+        const coord_t extra_inwards_end_move_length = 0,
+        const MendedShape& extra_inwards_move_contour = MendedShape());
+
+    /*!
+     * Add order optimized polygons to the gcode.
+     * Add polygons to the gcode with optimized order.
+     *
+     * \param polygons The polygons.
+     * \param config The config with which to print the polygon lines.
+     * for each given segment (optionally nullptr).
+     * \param settings The settings which should apply to these polygons added to the layer plan
+     * \param z_seam_config Optional configuration for z-seam.
+     * \param wall_0_wipe_dist The distance to travel along each polygon after
+     * it has been laid down, in order to wipe the start and end of the wall
+     * together.
+     * \param spiralize Whether to gradually increase the z height from the
+     * normal layer height to the height of the next layer over each polygon
+     * printed.
+     * \param flow_ratio The ratio with which to multiply the extrusion amount.
+     * \param always_retract Whether to force a retraction when moving to the
+     * start of the polygon (used for outer walls).
+     * \param reverse_order Adds polygons in reverse order.
+     * \param scarf_seam Indicates whether we may use a scarf seam for the path
+     * \param smooth_speed Indicates whether we may use a speed gradient for the path
+     */
+    void addPolygonsInGivenOrder(
+        const std::vector<PathOrdering<const Polygon*>>& polygons,
+        const GCodePathConfig& config,
+        const Settings& settings,
+        const ZSeamConfig& z_seam_config = ZSeamConfig(),
+        coord_t wall_0_wipe_dist = 0,
+        bool spiralize = false,
+        const Ratio flow_ratio = 1.0_r,
+        bool always_retract = false,
+        bool reverse_order = false,
+        bool scarf_seam = false,
+        bool smooth_speed = false);
 
     /*!
      *  @brief Send a GCodePath line to the communication object, applying proper Z offsets
@@ -851,7 +970,7 @@ private:
      *  @param position The start position (which is not included in the path points)
      *  @param extrude_speed The actual used extrusion speed
      */
-    void sendLineTo(const GCodePath& path, const Point3LL& position, const double extrude_speed);
+    void sendLineTo(const GCodePath& path, const Point3LL& position, const double extrude_speed, const std::optional<coord_t>& line_thickness = std::nullopt);
 
     /*!
      *  @brief Write a travel move and properly apply the various Z offsets
@@ -859,9 +978,15 @@ private:
      *  @param position The position to move to. The Z coordinate is an offset to the current layer position
      *  @param speed The actual used speed
      *  @param path_z_offset The global path Z offset to be applied
+     *  @param retract_distance The absolute retraction distance to be reached during this travel move, or nullopt to leave it unchanged
      *  @note This function is to be used when dealing with 3D coordinates. If you have 2D coordinates, just call gcode.writeTravel()
      */
-    void writeTravelRelativeZ(GCodeExport& gcode, const Point3LL& position, const Velocity& speed, const coord_t path_z_offset);
+    void writeTravelRelativeZ(
+        GCodeExport& gcode,
+        const Point3LL& position,
+        const Velocity& speed,
+        const coord_t path_z_offset,
+        const std::optional<double> retract_distance = std::nullopt);
 
     /*!
      * \brief Write an extrusion move and properly apply the various Z offsets
@@ -884,6 +1009,10 @@ private:
 
     /*!
      * \brief Alias for a function definition that adds an extrusion segment
+     * \param wall The wall line being printed
+     * \param segment_index The index of the segment of the wall line being printed
+     * \param segment_start_ratio When printing only a portion of the extrusion segment (e.g. for scarf seam), this is the ratio at which the current subsegment starts
+     * \param segment_end_ratio When printing only a portion of the extrusion segment (e.g. for scarf seam), this is the ratio at which the current subsegment ends
      * \param start The start position of the segment
      * \param end The end position of the segment
      * \param speed_factor The speed factor to be applied when extruding this specific segment (relative to nominal speed for the entire path)
@@ -891,7 +1020,12 @@ private:
      * \param line_width_ratio The line width ratio to be applied when extruding this specific segment (relative to nominal line width for the entire path)
      * \param distance_to_bridge_start The calculate distance to the next bridge start, which may be irrelevant in some cases
      */
+    template<class PathType>
     using AddExtrusionSegmentFunction = std::function<void(
+        const PathAdapter<PathType>& wall,
+        const size_t segment_index,
+        const Ratio& segment_start_ratio,
+        const Ratio& segment_end_ratio,
         const Point3LL& start,
         const Point3LL& end,
         const Ratio& speed_factor,
@@ -958,7 +1092,7 @@ private:
         const coord_t decelerate_length,
         const bool is_scarf_closure,
         const bool compute_distance_to_bridge_start,
-        const AddExtrusionSegmentFunction& func_add_segment);
+        const AddExtrusionSegmentFunction<PathType>& func_add_segment);
 
     /*!
      * \brief Add a wall to the gcode with optimized order, possibly adding a scarf seam / speed gradient according to settings
@@ -990,7 +1124,7 @@ private:
         const bool is_candidate_small_feature,
         const bool scarf_seam,
         const bool smooth_speed,
-        const AddExtrusionSegmentFunction& func_add_segment);
+        const AddExtrusionSegmentFunction<PathType>& func_add_segment);
 
     /*!
      * \brief Add a wipe travel after the given path has been extruded
@@ -1040,9 +1174,86 @@ private:
      * \param wall The currently processed wall
      * \param current_index The index of the currently processed point
      * \param min_bridge_line_len The minimum line width to allow an extrusion move to be processed as a bridge move
+     * \param direction The direction to look for, 1 to use the actual line direction, -1 to go backwards
      * \return The distance from the start of the current wall line to the first bridge segment
      */
-    coord_t computeDistanceToBridgeStart(const ExtrusionLine& wall, const size_t current_index, const coord_t min_bridge_line_len) const;
+    [[nodiscard]] coord_t computeDistanceToBridgeStart(const ExtrusionLine& wall, const size_t current_index, const coord_t min_bridge_line_len, const int direction = 1) const;
+
+    /*!
+     * Compute the Z-hop and travel duration for the given travel path
+     * @param gcode The gcode exporter, which we need to get the current nozzle position
+     * @param extruder The current extruder, for which we need the settings
+     * @param path The travel path we want the durations of
+     * @param z_hop_height The Z-hop height
+     * @return The computed path durations
+     */
+    static TravelDurations computeTravelDurations(const GCodeExport& gcode, const ExtruderTrain& extruder, const GCodePath& path, const coord_t z_hop_height);
+
+    /*!
+     * Compute the anti-ooze (retraction and priming) amounts to be processed during stationary/Z-hop/travel steps
+     * @param gcode The gcode exporter
+     * @param extruder The current extruder
+     * @param path The raw travel path to be exported
+     * @param z_hop_height The Z-hop height
+     * @param retraction_config The retraction/priming configuration to be used
+     * @param retraction_amounts The retraction amounts to be set
+     * @param priming_amounts The priming amounts to be set
+     */
+    static void computeAntiOozeAmounts(
+        const GCodeExport& gcode,
+        const ExtruderTrain& extruder,
+        const GCodePath& path,
+        const coord_t z_hop_height,
+        const RetractionAndWipeConfig* retraction_config,
+        std::optional<TravelAntiOozing>& retraction_amounts,
+        std::optional<TravelAntiOozing>& priming_amounts);
+
+    /*!
+     * Compute the anti-ooze amounts to be processed during stationary/Z-hop/travel steps for either a retraction or a priming
+     * @param travel_durations The pre-calculated travel durations
+     * @param gcode The gcode exporter
+     * @param path The raw travel path to be exported
+     * @param settings The anti-ooze settings to be applied
+     * @param reversed Indicates if we should process the path forwards (retraction at the beginning) or backwards (prime at the end)
+     */
+    static void computeAntiOozeTravelSplit(
+        const GCodeExport& gcode,
+        const GCodePath& path,
+        const Velocity& speed,
+        const double amount_during_travel,
+        const bool reversed,
+        TravelAntiOozing& anti_oozing);
+
+    /*!
+     * Write a single travel segment, taking care of the retraction and priming during travel
+     * @param travel_retraction_state The current travel retraction state, which may be updated
+     * @param gcode The gcode exporter
+     * @param path The full travel path being written
+     * @param retraction_amounts The pre-calculated retraction amounts to be processed during this travel move
+     * @param priming_amounts The pre-calculated priming amounts to be processed during this travel move
+     * @param speed The travel speed
+     * @param point_index The index of the current point in the path to be written
+     * @warning When travel_retraction_state is None, retraction_amounts and priming_amounts may be std::nullopt, however if it is anything different,
+     *          it is assumed that they both have a value.
+     */
+    void writeTravelSegment(
+        TravelRetractionState& travel_retraction_state,
+        GCodeExport& gcode,
+        const GCodePath& path,
+        const std::optional<TravelAntiOozing>& retraction_amounts,
+        const std::optional<TravelAntiOozing>& priming_amounts,
+        const Velocity& speed,
+        const size_t point_index);
+
+    /*!
+     * Generates an extrusion move that goes as inwards as possible given a skeletized contour, starting from the given point
+     * @param trapezoidal_edges The edges of the skeletal trapezoidation for the contour
+     * @param start_point The point to start generating the move from
+     * @param move_inwards_length The length of the move to be generated
+     * @return Extrusion path to be started from the given start point, going further inwards. It may be empty if not possible or if the start point is
+     *         already inwards the contour enough.
+     */
+    static OpenPolyline makeInwardsMove(const std::list<STHalfEdge>& trapezoidal_edges, const Point2LL& start_point, const coord_t move_inwards_length);
 };
 
 } // namespace cura

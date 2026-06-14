@@ -27,21 +27,10 @@ enum class EFillMethod
     CROSS_3D,
     GYROID,
     LIGHTNING,
+    HONEYCOMB,
+    OCTAGON,
     NONE, // NOTE: Should remain second last! Before PLUGIN (Might be used in testing to enumerate the enum.)
     PLUGIN, // Place plugin after none to prevent it from being tested in the gtest suite.
-};
-
-
-/*!
- * Enum for the value of extra_infill_lines_to_support_skins
- * This enum defines what extra lines should be added to infill to support
- * skins above.
- */
-enum class EExtraInfillLinesToSupportSkins
-{
-    WALLS_AND_LINES,
-    WALLS,
-    NONE,
 };
 
 /*!
@@ -93,7 +82,6 @@ enum class EZSeamType
 
 enum class EZSeamCornerPrefType
 {
-    Z_SEAM_CORNER_PREF_NONE,
     Z_SEAM_CORNER_PREF_INNER,
     Z_SEAM_CORNER_PREF_OUTER,
     Z_SEAM_CORNER_PREF_ANY,

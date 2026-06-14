@@ -214,6 +214,11 @@ public:
         const SliceMeshStorage* mesh = nullptr,
         const Shape& prevent_small_exposed_to_air = Shape());
 
+    coord_t getLineDistance() const
+    {
+        return line_distance_;
+    }
+
     /*!
      * Generate the wall toolpaths of an infill area. It will return the inner contour and set the inner-contour.
      * This function is called within the generate() function but can also be called stand-alone
@@ -233,6 +238,15 @@ public:
         const Settings& settings,
         int layer_idx,
         SectionType section_type);
+
+    /*!
+     * Get the inner infill contour
+     * @warning The contour is generated when calling generate() so the returned value won't be valid before
+     */
+    const Shape& getInnerContour() const
+    {
+        return inner_contour_;
+    }
 
 private:
     struct InfillLineSegment
@@ -399,6 +413,20 @@ private:
      * \param result_polygons (output) The resulting polygons, if zigzagging accidentally happened to connect gyroid lines in a circle.
      */
     void generateGyroidInfill(OpenLinesSet& result_polylines, Shape& result_polygons);
+
+    /*!
+     * Generate honeycomb infill
+     * \param result_polylines (output) The resulting polylines
+     * \param result_polygons (output) The resulting polygons, if zigzagging accidentally happened to connect lines in a circle.
+     */
+    void generateHoneycombInfill(OpenLinesSet& result_polylines, Shape& result_polygons);
+
+    /*!
+     * Generate octagon infill
+     * \param result_polylines (output) The resulting polylines
+     * \param result_polygons (output) The resulting polygons, if zigzagging accidentally happened to connect lines in a circle.
+     */
+    void generateOctagonInfill(OpenLinesSet& result_polylines, Shape& result_polygons);
 
     /*!
      * Generate lightning fill aka minfill aka 'Ribbed Support Vault Infill', see Tricard,Claux,Lefebvre/'Ribbed Support Vaults for 3D Printing of Hollowed Objects'

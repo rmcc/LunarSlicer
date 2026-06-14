@@ -21,7 +21,7 @@ namespace cura
  * @return T The square of the input value.
  */
 template<utils::multipliable T>
-[[nodiscard]] T square(const T& a)
+[[nodiscard]] constexpr T square(const T& a)
 {
     return a * a;
 }
@@ -134,6 +134,23 @@ template<utils::floating_point T>
 [[nodiscard]] inline T randf()
 {
     return static_cast<T>(std::rand()) / static_cast<T>(RAND_MAX);
+}
+
+/*! \brief Check if a value is very close to 0 */
+template<utils::floating_point T>
+[[nodiscard]] bool is_zero(T value)
+{
+    return std::abs(value) < (std::numeric_limits<T>::epsilon() * 100.0);
+}
+
+/*!
+ * Calculates the sign of a numeric value, 1 if positive and -1 if negative
+ * @note 0 is also considered as positive
+ */
+template<utils::numeric T>
+[[nodiscard]] int8_t sign(T value)
+{
+    return std::signbit(value) ? -1 : 1;
 }
 
 } // namespace cura

@@ -20,6 +20,7 @@
 #include "MultiMaterialSegmentation.h"
 #include "layerPart.h"
 #include "MeshGroup.h"
+#include "MeshMaterialSplitter.h"
 #include "Mold.h"
 #include "multiVolumes.h"
 #include "PrintFeature.h"
@@ -27,6 +28,7 @@
 #include "skin.h"
 #include "SkirtBrim.h"
 #include "Slice.h"
+#include "TextureDataProvider.h"
 #include "sliceDataStorage.h"
 #include "slicer.h"
 #include "support.h"
@@ -61,6 +63,8 @@ namespace cura
 
 bool FffPolygonGenerator::generateAreas(SliceDataStorage& storage, MeshGroup* meshgroup, TimeKeeper& timeKeeper)
 {
+    MeshMaterialSplitter::makeMaterialModifierMeshes(meshgroup);
+
     if (! sliceModel(meshgroup, timeKeeper, storage))
     {
         return false;
@@ -212,7 +216,11 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
         }
 
         Mesh& mesh = meshgroup->meshes[mesh_idx];
-        Slicer* slicer = new Slicer(&mesh, layer_thickness, slice_layer_count, use_variable_layer_heights, adaptive_layer_height_values);
+
+        const SlicingTolerance slicing_tolerance = mesh.settings_.get<SlicingTolerance>("slicing_tolerance");
+
+        Slicer* slicer
+            = new Slicer(&mesh, layer_thickness, slice_layer_count, use_variable_layer_heights, adaptive_layer_height_values, slicing_tolerance, initial_layer_thickness);
 
         if (mesh.settings_.get<bool>("colorful_slicing_enable") && mesh.isMultipleColor()) {
             Slicer* color_slicer = new Slicer();
@@ -248,10 +256,10 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
 
     Mold::process(slicerList);
 
-    Scene& scene = Application::getInstance().current_slice_->scene;
+    const Scene& scene = Application::getInstance().current_slice_->scene;
     for (unsigned int mesh_idx = 0; mesh_idx < slicerList.size(); mesh_idx++)
     {
-        Mesh& mesh = scene.current_mesh_group->meshes[mesh_idx];
+        const Mesh& mesh = scene.current_mesh_group->meshes[mesh_idx];
         if (mesh.settings_.get<bool>("conical_overhang_enabled") && ! mesh.settings_.get<bool>("anti_overhang_mesh"))
         {
             ConicalOverhang::apply(slicerList[mesh_idx], mesh);
@@ -278,7 +286,7 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
     storage.print_layer_count = 0;
     for (unsigned int meshIdx = 0; meshIdx < slicerList.size(); meshIdx++)
     {
-        Mesh& mesh = scene.current_mesh_group->meshes[meshIdx];
+        const Mesh& mesh = scene.current_mesh_group->meshes[meshIdx];
         Slicer* slicer = slicerList[meshIdx];
         if (! mesh.settings_.get<bool>("anti_overhang_mesh") && ! mesh.settings_.get<bool>("infill_mesh") && ! mesh.settings_.get<bool>("cutting_mesh"))
         {
@@ -292,7 +300,7 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
     for (unsigned int meshIdx = 0; meshIdx < slicerList.size(); meshIdx++)
     {
         Slicer* slicer = slicerList[meshIdx];
-        Mesh& mesh = scene.current_mesh_group->meshes[meshIdx];
+        const Mesh& mesh = scene.current_mesh_group->meshes[meshIdx];
 
         // always make a new SliceMeshStorage, so that they have the same ordering / indexing as meshgroup.meshes
         storage.meshes.push_back(std::make_shared<SliceMeshStorage>(&meshgroup->meshes[meshIdx], slicer->layers.size())); // new mesh in storage had settings from the Mesh
@@ -321,6 +329,11 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
         for (LayerIndex layer_nr = 0; layer_nr < meshStorage.layers.size(); layer_nr++)
         {
             SliceLayer& layer = meshStorage.layers[layer_nr];
+            const SlicerLayer& slicer_layer = slicer->layers[layer_nr];
+            if (slicer_layer.sliced_uv_coordinates_ && mesh.texture_ && mesh.texture_data_mapping_)
+            {
+                layer.texture_data_provider_ = std::make_shared<TextureDataProvider>(slicer_layer.sliced_uv_coordinates_, mesh.texture_, mesh.texture_data_mapping_);
+            }
 
             if (use_variable_layer_heights)
             {
@@ -365,7 +378,7 @@ bool FffPolygonGenerator::sliceModel(MeshGroup* meshgroup, TimeKeeper& timeKeepe
 void FffPolygonGenerator::slices2polygons(SliceDataStorage& storage, TimeKeeper& time_keeper)
 {
     // compute layer count and remove first empty layers
-    // there is no separate progress stage for removeEmptyFisrtLayer (TODO)
+    // there is no separate progress stage for removeEmptyFirstLayer (TODO)
     unsigned int slice_layer_count = 0;
     for (std::shared_ptr<SliceMeshStorage>& mesh_ptr : storage.meshes)
     {

@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Slice.h"
 #include "boost/polygon/voronoi.hpp"
+#include "geometry/OpenPolyline.h"
 #include "utils/Constant.h"
 #include "utils/Simplify.h"
 #include "utils/ThreadPool.h"

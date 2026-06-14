@@ -4,6 +4,9 @@
 #ifndef UTILS_AABB_H
 #define UTILS_AABB_H
 
+#include <initializer_list>
+
+#include "geometry/OpenLinesSet.h"
 #include "geometry/Point2LL.h"
 
 namespace cura
@@ -21,10 +24,13 @@ public:
 
     AABB(); //!< initializes with invalid min and max
     AABB(const Point2LL& min, const Point2LL& max); //!< initializes with given min and max
+    AABB(const std::initializer_list<Point2LL>& points); //!< initializes with given points
     AABB(const Shape& shape); //!< Computes the boundary box for the given shape
+    AABB(const OpenLinesSet& lines); //!< Computes the boundary box for the given lines
     AABB(const PointsSet& poly); //!< Computes the boundary box for the given polygons
 
     void calculate(const Shape& shape); //!< Calculates the aabb for the given shape (throws away old min and max data of this aabb)
+    void calculate(const OpenLinesSet& lines); //!< Calculates the aabb for the given lines (throws away old min and max data of this aabb)
     void calculate(const PointsSet& poly); //!< Calculates the aabb for the given polygon (throws away old min and max data of this aabb)
 
     /*!
@@ -106,6 +112,20 @@ public:
      * \return the polygon of this aabb
      */
     Polygon toPolygon() const;
+
+    [[nodiscard]] coord_t width() const;
+
+    [[nodiscard]] coord_t height() const;
+
+
+    /**
+     * Calculates the Minimum Area Oriented Bounding Box for a given Shape (polygon).
+     * This follows the "Rotating Calipers" logic: the minimum area box must have
+     * one side collinear with an edge of the convex hull.
+     * * @param shape The input points (assumed to be the convex hull for optimal performance).
+     * @return A tuple containing the local AABB (extents) and the rotation angle.
+     */
+    static std::tuple<AABB, AngleRadians> minimumAreaOrientedBoundingBox(const Shape& shape);
 };
 
 } // namespace cura

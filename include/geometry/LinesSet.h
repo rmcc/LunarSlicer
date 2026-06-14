@@ -18,6 +18,8 @@ class Shape;
 template<class LineType>
 class LinesSet;
 class OpenPolyline;
+class PointMatrix;
+class Point3Matrix;
 
 enum class CheckNonEmptyParam
 {
@@ -72,12 +74,21 @@ public:
     }
 
     /*!
+     * \brief Constructor with a lines initializer list, provided for convenience
+     * \warning A copy of the lines list is made, so this constructor is somehow "slow"
+     */
+    explicit LinesSet(const std::initializer_list<LineType>& initializer)
+        : lines_{ initializer }
+    {
+    }
+
+    /*!
      * \brief Constructor that takes ownership of the data from the given set of lines
      * \warning This constructor is actually only defined for a LinesSet containing OpenPolyline
      *          objects, because closed ones require an additional argument
      */
     template<typename U = LineType>
-    requires std::is_same_v<U, OpenPolyline>
+        requires std::is_same_v<U, OpenPolyline>
     explicit LinesSet(ClipperLib::Paths&& paths)
     {
         reserve(paths.size());
@@ -247,6 +258,8 @@ public:
 
     [[nodiscard]] Shape offset(coord_t distance, ClipperLib::JoinType join_type = ClipperLib::jtMiter, double miter_limit = 1.2) const;
 
+    [[nodiscard]] LinesSet<LineType> difference(const Shape& other) const;
+
     /*!
      * Utility method for creating the tube (or 'donut') of a shape.
      *
@@ -260,6 +273,10 @@ public:
     [[nodiscard]] Shape createTubeShape(const coord_t inner_offset, const coord_t outer_offset) const;
 
     void translate(const Point2LL& delta);
+
+    void applyMatrix(const PointMatrix& matrix);
+
+    void applyMatrix(const Point3Matrix& matrix);
 
     /*!
      * \brief Utility method to add all the lines to a ClipperLib::Clipper object
