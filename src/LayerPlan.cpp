@@ -3402,8 +3402,6 @@ void LayerPlan::writeGCode(GCodeExport& gcode)
     const bool jerk_enabled = mesh_group_settings.get<bool>("jerk_enabled");
     const bool jerk_travel_enabled = mesh_group_settings.get<bool>("jerk_travel_enabled");
     std::shared_ptr<const SliceMeshStorage> current_mesh;
-    const double temp_wait_range = mesh_group_settings.get<double>("material_print_temp_wait_range");
-    const double temp_wait_time = mesh_group_settings.get<double>("material_print_temp_wait_time");
 
     for (size_t extruder_plan_idx = 0; extruder_plan_idx < extruder_plans_.size(); extruder_plan_idx++)
     {
@@ -3449,7 +3447,7 @@ void LayerPlan::writeGCode(GCodeExport& gcode)
             }
 
             { // require printing temperature to be met
-                constexpr bool wait = false;
+                constexpr bool wait = true;
                 gcode.writeTemperatureCommand(extruder_nr, extruder_plan.required_start_temperature_, wait);
             }
 
@@ -3467,7 +3465,7 @@ void LayerPlan::writeGCode(GCodeExport& gcode)
 
             { // require printing temperature to be met
                 constexpr bool wait = true;
-                gcode.writeTemperatureCommand(extruder_nr, extruder_plan.required_start_temperature_, wait, temp_wait_range, temp_wait_time);
+                gcode.writeTemperatureCommand(extruder_nr, extruder_plan.required_start_temperature_, wait);
             }
 
             const double extra_prime_amount = retraction_config->retraction_config.distance ? retraction_config->switch_extruder_extra_prime_amount : 0;

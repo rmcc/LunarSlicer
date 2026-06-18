@@ -841,10 +841,7 @@ void GCodeExport::processInitialLayerExtrudersTemperatures(const SliceDataStorag
     {
         if (material_print_temp_wait || ((extruder.nr == start_extruder_nr) && wait_start_extruder))
         {
-            const double temp_wait_range = scene.current_mesh_group->settings.get<double>("material_print_temp_wait_range");
-            const double temp_wait_time = scene.current_mesh_group->settings.get<double>("material_print_temp_wait_time");
-
-            writeTemperatureCommand(extruder.nr, extruder.temperature, true, true, temp_wait_range, temp_wait_time);
+            writeTemperatureCommand(extruder.nr, extruder.temperature, true, true);
         }
     }
 }
@@ -1671,7 +1668,7 @@ void GCodeExport::writeSpecificFanCommand(double speed, size_t fan_number)
     current_fans_speeds_[fan_number] = speed;
 }
 
-void GCodeExport::writeTemperatureCommand(const size_t extruder, const Temperature& temperature, const bool wait, const bool force_write_on_equal, const double wait_range, const double wait_time)
+void GCodeExport::writeTemperatureCommand(const size_t extruder, const Temperature& temperature, const bool wait, const bool force_write_on_equal)
 {
     const ExtruderTrain& extruder_train = Application::getInstance().current_slice_->scene.extruders[extruder];
 
@@ -1733,18 +1730,7 @@ void GCodeExport::writeTemperatureCommand(const size_t extruder, const Temperatu
 #ifdef ASSERT_INSANE_OUTPUT
     assert(temperature >= 0);
 #endif // ASSERT_INSANE_OUTPUT
-    if (wait && flavor_ != EGCodeFlavor::MAKERBOT) {
-        *output_stream_ << " S" << PrecisionedDouble{ 1, temperature };
-        if (wait_range >= 0) {
-            *output_stream_ << " C" << PrecisionedDouble{ 1, wait_range };
-        }
-        if (wait_time >= 0) {
-            *output_stream_ << " W" << PrecisionedDouble{ 1, wait_time };
-        }
-        *output_stream_ << new_line_;
-    } else {
-        *output_stream_ << " S" << PrecisionedDouble{ 1, temperature } << new_line_;
-    }
+    *output_stream_ << " S" << PrecisionedDouble{ 1, temperature } << new_line_;
     if (extruder != current_extruder_ && always_write_active_tool_)
     {
         // Some firmwares (ie Smoothieware) change tools every time a "T" command is read - even on a M104 line, so we need to switch back to the active tool.

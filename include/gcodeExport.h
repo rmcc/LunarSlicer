@@ -661,7 +661,7 @@ public:
      * \param wait Indicates whether we should just set the temperature and keep going, or wait for the temperature to be reach before going further
      * \param force_write_on_equal When true, we should write the temperature command even if the actual set temperature is the same
      */
-    void writeTemperatureCommand(const size_t extruder, const Temperature& temperature, const bool wait = false, const bool force_write_on_equal = false, const double wait_range = -1.0, const double wait_time = -1.0);
+    void writeTemperatureCommand(const size_t extruder, const Temperature& temperature, const bool wait = false, const bool force_write_on_equal = false);
     void writeBedTemperatureCommand(const Temperature& temperature, const bool wait = false);
     void writeBuildVolumeTemperatureCommand(const Temperature& temperature, const bool wait = false);
 
