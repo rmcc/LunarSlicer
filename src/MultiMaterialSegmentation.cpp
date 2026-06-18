@@ -395,6 +395,69 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching(Shape& polys, Shape& 
     }
 }
 
+Shape differenceOpenPolygons(const Shape& open_polylines, const Shape& clip_polygons)
+{
+    ClipperLib::PolyTree result;
+    ClipperLib::Clipper clipper;
+
+    for (auto& polyline : const_cast<Shape&>(open_polylines))
+    {
+        clipper.AddPath(polyline.getPoints(), ClipperLib::ptSubject, false);
+    }
+
+    for (auto& polygon : const_cast<Shape&>(clip_polygons))
+    {
+        clipper.AddPath(polygon.getPoints(), ClipperLib::ptClip, true);
+    }
+
+    clipper.Execute(ClipperLib::ctDifference, result);
+
+    ClipperLib::Paths output_paths;
+    ClipperLib::OpenPathsFromPolyTree(result, output_paths);
+
+    Shape ret;
+    for (auto& path : output_paths)
+    {
+        Polygon new_poly;
+        new_poly.getPoints() = std::move(path);
+
+        ret.push_back(std::move(new_poly));
+    }
+
+    return ret;
+}
+
+Shape intersectionOpenPolygons(const Shape& open_polylines, const Shape& clip_polygons)
+{
+    ClipperLib::PolyTree result;
+    ClipperLib::Clipper clipper;
+
+    for (auto& polyline : const_cast<Shape&>(open_polylines))
+    {
+        clipper.AddPath(polyline.getPoints(), ClipperLib::ptSubject, false);
+    }
+
+    for (auto& polygon : const_cast<Shape&>(clip_polygons))
+    {
+        clipper.AddPath(polygon.getPoints(), ClipperLib::ptClip, true);
+    }
+
+    clipper.Execute(ClipperLib::ctIntersection, result);
+
+    ClipperLib::Paths output_paths;
+    ClipperLib::OpenPathsFromPolyTree(result, output_paths);
+
+    Shape ret;
+    for (auto& path : output_paths)
+    {
+        Polygon new_poly;
+        new_poly.getPoints() = std::move(path);
+        ret.push_back(std::move(new_poly));
+    }
+
+    return ret;
+}
+
 
 void MultiMaterialSegmentation::coloredLineSegmentMatching2(Shape& polys, Shape& color_line_polys, Shape& out_color_polys, std::vector<Segment>& out_color_segments)
 {
@@ -418,15 +481,14 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching2(Shape& polys, Shape&
         }
     };
 
-    Shape diffLines = polys.difference(color_line_polys);
-
+    Shape diffLines = differenceOpenPolygons(polys, color_line_polys);
 
     if (diffLines.empty()) {
         copyPolygons(MESH_PAINTING_COLOR);
         return;
     }
 
-    Shape interLines = polys.intersection(color_line_polys);
+    Shape interLines = intersectionOpenPolygons(polys, color_line_polys);
 
     if (interLines.empty()) {
         copyPolygons(MESH_NO_PAINTING_COLOR);
@@ -532,7 +594,10 @@ void MultiMaterialSegmentation::coloredLineSegmentMatching2(Shape& polys, Shape&
     std::vector<int> areas;
     for (int i = 0; i < out_color_polys.size(); ++i)
     {
-        areas.push_back(out_color_polys[i].area());
+        for (int i = 0; i < polys.size(); ++i)
+        {
+            areas.push_back(polys[i].area());
+        }
         int area = out_color_polys[i].area();
         int abs_area = std::abs(area);
         int min_area = std::abs(areas[0]) - abs_area;
